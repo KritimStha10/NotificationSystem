@@ -1,25 +1,28 @@
-import amqp from 'amqplib';
+import Redis from 'ioredis';
+const redis = new Redis();
+redis.subscribe('notifications');
+redis.on('message', async (_, msg) => {
+  const n = JSON.parse(msg);
+  console.log('🔔 sending', n);
+  let attempts = n.attempts;
+  try {
+    await console.log(`Sent notification #${n.id}`);
+    await fetch(`http://laravel/api/notifications/${n.id}/mark-sent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        });
 
-async function consumeMessages() {
-    const connection = await amqp.connect('amqp://localhost');
-    const channel = await connection.createChannel();
-
-    await channel.assertQueue('notifications');
-
-    channel.consume('notifications', async (msg) => {
-        if (msg) {
-            const notification = JSON.parse(msg.content.toString());
-
-            console.log(`Processing notification: ${notification.message}`);
-
-            updateNotification(notification.id, 'processed');
-            channel.ack(msg);
-        }
+  } catch (e) {
+    attempts++;
+    await fetch(`http://laravel/api/notifications/${n.id}/increment-attempts`, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+    },
     });
-}
 
-async function updateNotification(id: number, status: string) {
-    console.log(`Updating notification ${id} status to ${status}`);
-}
-
-consumeMessages();
+    if (attempts < 5) {
+      setTimeout(() => redis.publish('notifications', JSON.stringify({ ...n, attempts })), Math.pow(2, attempts) * 1000);
+    }
+  }
+});
