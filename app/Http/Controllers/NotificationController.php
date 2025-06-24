@@ -8,16 +8,21 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $req)
     {
-        $notification = Notification::create([
-            'user_id' => $request->user_id,
-            'message' => $request->message,
+        $req->validate(['user_id'=>'required|integer','payload'=>'nullable|array']);
+        $hourlyCount = Notification::where('user_id', $req->user_id)
+            ->where('created_at','>=', now()->subHour())
+            ->count();
+        if ($hourlyCount >= 10) {
+            return response()->json(['error'=>'Rate limit exceeded'], 429);
+        }
+        $notif = Notification::create([
+            'user_id'=>$req->user_id,
+            'message'=>$req->message,
         ]);
-
-        // Publish to RabbitMQ/Redis here (to be implemented)
-        
-        return response()->json(['message' => 'Notification queued', 'data' => $notification], 201);
+        dispatch(new PublishNotificationJob($notif));
+        return response()->json($notif, 201);
     }
 
     public function recent()
