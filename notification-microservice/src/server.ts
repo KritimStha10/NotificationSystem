@@ -8,6 +8,9 @@ app.get('/notifications/recent', async () => {
 app.get('/notifications/summary', async () => {
   return (await fetch('http://laravel/api/notifications/summary')).json();
 });
+app.get('/', async () => {
+  return { message: 'Notification microservice running' };
+});
 
 app.listen({ port: 3000 }, (err, address) => {
   if (err) {
